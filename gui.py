@@ -1,24 +1,9 @@
 """
 Tkinter GUI for the AI Dungeon Master.
-
-Layout:
-    +-------------------------+--------------------+
-    |                         |  Player stats      |
-    |                         +--------------------+
-    |    Dungeon canvas       |  Current room      |
-    |    (map view)           +--------------------+
-    |                         |  Inventory         |
-    +-------------------------+--------------------+
-    |  Action buttons                              |
-    +----------------------------------------------+
-    |  Event log                                   |
-    +----------------------------------------------+
-
-The GUI is a thin layer over GameState (game.py). All AI logic lives there.
+Updated to support Step-by-Step CSP Generation.
 """
 
 from __future__ import annotations
-
 import argparse
 import tkinter as tk
 from tkinter import font as tkfont
@@ -27,7 +12,6 @@ from typing import Optional
 
 from game import GameState
 from models import ItemType, NPCType, RoomType
-
 
 # ---------------------------------------------------------------------------
 # Visual constants
@@ -50,7 +34,6 @@ GRID_BG = "#0e0e10"
 CELL_PX = 60
 PADDING = 12
 
-
 # ---------------------------------------------------------------------------
 # Main application
 # ---------------------------------------------------------------------------
@@ -70,17 +53,13 @@ class DungeonGUI:
         self._build_layout()
         self.refresh()
 
-    # -- layout ------------------------------------------------------------
-
     def _build_layout(self) -> None:
         main = tk.Frame(self.root, bg=GRID_BG)
         main.pack(fill=tk.BOTH, expand=True, padx=PADDING, pady=PADDING)
 
-        # Top: map canvas (left) + side panels (right)
         top = tk.Frame(main, bg=GRID_BG)
         top.pack(fill=tk.BOTH, expand=True)
 
-        # --- map canvas ---
         d = self.state.dungeon
         canvas_w = d.width * CELL_PX + 2 * PADDING
         canvas_h = d.height * CELL_PX + 2 * PADDING
@@ -89,19 +68,57 @@ class DungeonGUI:
             bg=GRID_BG, highlightthickness=0)
         self.canvas.pack(side=tk.LEFT, anchor=tk.N)
 
-        # --- side panels ---
         right = tk.Frame(top, bg=GRID_BG)
         right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(PADDING, 0))
 
+        self._build_debug_panel(right)
         self._build_stats_panel(right)
         self._build_room_panel(right)
         self._build_inventory_panel(right)
 
-        # Action bar
         self._build_action_bar(main)
-
-        # Event log
         self._build_event_log(main)
+
+    def _build_debug_panel(self, parent: tk.Widget) -> None:
+        body = self._section(parent, "Debug Controls")
+        btn_frame = tk.Frame(body, bg="#1a1a1f")
+        btn_frame.pack(fill=tk.X)
+
+        tk.Button(btn_frame, text="Regenerate", bg="#c0392b", fg="white",
+                  command=self._on_regenerate, width=12).pack(side=tk.LEFT, padx=2)
+        
+        tk.Button(btn_frame, text="Step Gen", bg="#2980b9", fg="white",
+                  command=self._on_step_gen, width=12).pack(side=tk.LEFT, padx=2)
+
+    # -- handlers ------------------------------------------------------
+
+    def _on_regenerate(self) -> None:
+        """Fully resets the dungeon and player position."""
+        # Using the params stored in state to re-init
+        self.state.__init__(
+            grid_size=self.state.csp_solver.width,
+            num_rooms=self.state.grid_params[1],
+            player_name=self.state.player.name,
+            seed=None 
+        )
+        self.state.event_log.append("--- Dungeon Regenerated ---")
+        self.refresh()
+
+    def _on_step_gen(self) -> None:
+        """Advances the CSP solver by one step and refreshes the view."""
+        is_running = self.state.step_gen()
+        
+        # Force all currently assigned rooms to be 'visited' so they 
+        # show up on the canvas during the backtracking process.
+        for room in self.state.dungeon.rooms.values():
+            room.visited = True
+            
+        self.refresh()
+        
+        if not is_running:
+            messagebox.showinfo("CSP", "Generation complete. Movement unlocked.")
+
+    # -- layout helpers ----------------------------------------------------
 
     def _section(self, parent: tk.Widget, title: str) -> tk.Frame:
         wrapper = tk.Frame(parent, bg=GRID_BG, pady=4)
@@ -131,8 +148,6 @@ class DungeonGUI:
                                   fg="#cfcfcf", justify="left", wraplength=300,
                                   anchor="w")
         self.room_text.pack(fill=tk.X, anchor="w")
-
-        # Buttons for picking up items
         self.room_items_frame = tk.Frame(body, bg="#1a1a1f")
         self.room_items_frame.pack(fill=tk.X, pady=(6, 0))
 
@@ -181,7 +196,7 @@ class DungeonGUI:
         self.log_box.pack(fill=tk.BOTH, expand=True)
         self.log_box.config(state=tk.DISABLED)
 
-    # -- handlers ----------------------------------------------------------
+    # -- Action Handlers ---------------------------------------------------
 
     def _on_move(self, direction: str) -> None:
         x, y = self.state.player.position
@@ -204,8 +219,9 @@ class DungeonGUI:
         self._maybe_endgame()
 
     def _on_talk(self) -> None:
-        self.state.talk()
-        self.refresh()
+        if hasattr(self.state, 'talk'):
+            self.state.talk()
+            self.refresh()
 
     def _on_pickup(self, idx: int) -> None:
         self.state.pick_up(idx)
@@ -220,18 +236,11 @@ class DungeonGUI:
 
     def _maybe_endgame(self) -> None:
         if self.state.status.game_over:
-            self.refresh()  # final repaint first
+            self.refresh()
             if self.state.status.victory:
-                messagebox.showinfo(
-                    "Victory!",
-                    f"You defeated the boss in {self.state.turn} turns.\n"
-                    f"Final HP: {self.state.player.hp}/{self.state.player.max_hp}\n"
-                    f"Gold: {self.state.player.gold}")
+                messagebox.showinfo("Victory!", "You defeated the boss!")
             else:
-                messagebox.showwarning(
-                    "Defeated",
-                    f"You fell after {self.state.turn} turns.\n"
-                    f"Gold collected: {self.state.player.gold}")
+                messagebox.showwarning("Defeated", "Your journey ends here.")
 
     # -- repaint -----------------------------------------------------------
 
@@ -248,63 +257,44 @@ class DungeonGUI:
         d = self.state.dungeon
         px = self.state.player.position
 
-        # Connections first (so cells overdraw)
+        # Connections
         for coords, room in d.rooms.items():
-            if not room.visited:
-                continue
+            if not room.visited: continue
             cx1, cy1 = self._cell_center(coords)
             for nb in room.connections:
-                if nb not in d.rooms:
-                    continue
-                if not d.rooms[nb].visited:
-                    continue
+                if nb not in d.rooms or not d.rooms[nb].visited: continue
                 cx2, cy2 = self._cell_center(nb)
-                self.canvas.create_line(
-                    cx1, cy1, cx2, cy2,
-                    fill=CONNECTION_COLOR, width=3)
+                self.canvas.create_line(cx1, cy1, cx2, cy2, fill=CONNECTION_COLOR, width=3)
 
         # Cells
         for coords, room in d.rooms.items():
             x, y = coords
-            x0 = PADDING + x * CELL_PX + 6
-            y0 = PADDING + y * CELL_PX + 6
-            x1 = x0 + CELL_PX - 12
-            y1 = y0 + CELL_PX - 12
-            if not room.visited:
-                fill = FOG_COLOR
-                outline = "#222"
-            else:
-                fill = ROOM_COLORS.get(room.room_type, UNVISITED_COLOR)
-                outline = "#333"
-            # Boss room locked indicator
-            if (room.room_type == RoomType.BOSS
-                    and not self.state.status.boss_unlocked
-                    and room.visited):
+            x0, y0 = PADDING + x * CELL_PX + 6, PADDING + y * CELL_PX + 6
+            x1, y1 = x0 + CELL_PX - 12, y0 + CELL_PX - 12
+            
+            fill = ROOM_COLORS.get(room.room_type, UNVISITED_COLOR) if room.visited else FOG_COLOR
+            outline = "#333" if room.visited else "#222"
+            
+            if room.room_type == RoomType.BOSS and not self.state.status.boss_unlocked and room.visited:
                 outline = "#f39c12"
-            self.canvas.create_rectangle(x0, y0, x1, y1,
-                                         fill=fill, outline=outline, width=2)
+
+            self.canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline=outline, width=2)
             if room.visited:
                 glyph = {
                     RoomType.START: "S", RoomType.BOSS: "B",
                     RoomType.TREASURE: "T", RoomType.MERCHANT: "M",
                     RoomType.TRAP: "X", RoomType.NORMAL: "·",
                 }.get(room.room_type, "?")
-                self.canvas.create_text(
-                    (x0 + x1) / 2, (y0 + y1) / 2,
-                    text=glyph, fill="#0a0a0a",
-                    font=self.bold)
+                self.canvas.create_text((x0+x1)/2, (y0+y1)/2, text=glyph, fill="#0a0a0a", font=self.bold)
 
-        # Player marker
-        cx, cy = self._cell_center(px)
-        r = 10
-        self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                fill=PLAYER_COLOR, outline="#000",
-                                width=2)
+        # Player (only if game is not in 'generation mode')
+        if not self.state.gen_iterator:
+            cx, cy = self._cell_center(px)
+            self.canvas.create_oval(cx-10, cy-10, cx+10, cy+10, fill=PLAYER_COLOR, outline="#000", width=2)
 
     def _cell_center(self, coords):
         x, y = coords
-        return (PADDING + x * CELL_PX + CELL_PX / 2,
-                PADDING + y * CELL_PX + CELL_PX / 2)
+        return (PADDING + x * CELL_PX + CELL_PX / 2, PADDING + y * CELL_PX + CELL_PX / 2)
 
     def _draw_stats(self) -> None:
         p = self.state.player
@@ -312,7 +302,11 @@ class DungeonGUI:
         pct = (p.hp / p.max_hp) * 100 if p.max_hp else 0
         self.hp_bar["value"] = pct
         self.hp_text.config(text=f"HP {p.hp}/{p.max_hp}")
-        keystr = "✓ Boss Key" if self.state.has_key() else "no key"
+        
+        # Check if the has_key helper exists or use a backup check
+        has_key = any(i.item_type == ItemType.KEY for i in p.inventory)
+        keystr = "✓ Boss Key" if has_key else "no key"
+        
         self.stat_text.config(
             text=(f"ATK {p.attack}    DEF {p.defense}\n"
                   f"Gold {p.gold}    Pos {p.position}\n"
@@ -320,42 +314,28 @@ class DungeonGUI:
 
     def _draw_room(self) -> None:
         room = self.state.current_room()
-        lines = [f"Type: {room.room_type.value}",
-                 f"Connections: {sorted(room.connections)}"]
+        lines = [f"Type: {room.room_type.value}"]
         if room.npcs:
             lines.append("NPCs:")
             for n in room.npcs:
                 tag = "(hostile)" if n.npc_type in (NPCType.ENEMY, NPCType.BOSS) else ""
                 lines.append(f"  - {n.name} HP {n.hp} {tag}")
-        else:
-            lines.append("No NPCs.")
+        
         if self.state.status.in_combat and self.state.status.combat_enemy:
             e = self.state.status.combat_enemy
-            lines.append(f"** IN COMBAT vs {e.name} (HP {e.hp}) **")
+            lines.append(f"** IN COMBAT vs {e.name} **")
         self.room_text.config(text="\n".join(lines))
 
-        # Pickup buttons
-        for w in self.room_items_frame.winfo_children():
-            w.destroy()
+        for w in self.room_items_frame.winfo_children(): w.destroy()
         if room.items:
-            tk.Label(self.room_items_frame, text="On the floor:",
-                     font=self.mono, bg="#1a1a1f",
-                     fg="#cfcfcf").pack(anchor="w")
+            tk.Label(self.room_items_frame, text="On the floor:", font=self.mono, bg="#1a1a1f", fg="#cfcfcf").pack(anchor="w")
             for i, item in enumerate(list(room.items)):
-                tk.Button(self.room_items_frame,
-                          text=f"Pick up: {item.name}",
-                          command=lambda idx=i: self._on_pickup(idx)
-                          ).pack(anchor="w", pady=1)
+                tk.Button(self.room_items_frame, text=f"Pick up: {item.name}", command=lambda idx=i: self._on_pickup(idx)).pack(anchor="w", pady=1)
 
     def _draw_inventory(self) -> None:
         self.inv_listbox.delete(0, tk.END)
         for item in self.state.player.inventory:
-            label = f"{item.name}  [{item.item_type.value}]"
-            if item.item_type == ItemType.WEAPON:
-                label += f"  +{item.properties.get('damage', 0)} ATK"
-            elif item.item_type == ItemType.POTION:
-                label += f"  heals {item.properties.get('heal', 0)}"
-            self.inv_listbox.insert(tk.END, label)
+            self.inv_listbox.insert(tk.END, f"{item.name} [{item.item_type.value}]")
 
     def _draw_log(self) -> None:
         self.log_box.config(state=tk.NORMAL)
@@ -365,55 +345,22 @@ class DungeonGUI:
         self.log_box.config(state=tk.DISABLED)
 
     def _update_button_state(self) -> None:
-        # Movement buttons
-        x, y = self.state.player.position
-        targets = {
-            "North": (x, y - 1), "South": (x, y + 1),
-            "East":  (x + 1, y), "West":  (x - 1, y),
-        }
         room = self.state.current_room()
         in_combat = self.state.status.in_combat
         game_over = self.state.status.game_over
-        for label, target in targets.items():
-            enabled = (target in room.connections
-                       and not in_combat and not game_over)
-            self.move_buttons[label].config(
-                state=tk.NORMAL if enabled else tk.DISABLED)
+        
+        for label, btn in self.move_buttons.items():
+            x, y = self.state.player.position
+            target = {"North": (x, y-1), "South": (x, y+1), "East": (x+1, y), "West": (x-1, y)}[label]
+            enabled = (target in room.connections and not in_combat and not game_over)
+            btn.config(state=tk.NORMAL if enabled else tk.DISABLED)
 
         self.btn_attack.config(state=tk.NORMAL if in_combat and not game_over else tk.DISABLED)
         self.btn_flee.config(state=tk.NORMAL if in_combat and not game_over else tk.DISABLED)
-        has_friendly = any(n.npc_type not in (NPCType.ENEMY, NPCType.BOSS)
-                           for n in room.npcs)
-        self.btn_talk.config(
-            state=tk.NORMAL if has_friendly and not in_combat and not game_over else tk.DISABLED)
-
-
-# ---------------------------------------------------------------------------
-# Launcher
-# ---------------------------------------------------------------------------
-
-def launch(grid: int = 8, rooms: int = 12, seed: Optional[int] = None,
-           player_name: str = "Hero", player_class: str = "Warrior") -> None:
-    state = GameState(grid_size=grid, num_rooms=rooms,
-                      player_name=player_name, player_class=player_class,
-                      seed=seed)
-    root = tk.Tk()
-    DungeonGUI(root, state)
-    root.mainloop()
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(description="AI Dungeon Master GUI")
-    ap.add_argument("--grid", type=int, default=8, help="Grid side length")
-    ap.add_argument("--rooms", type=int, default=12, help="Number of rooms")
-    ap.add_argument("--seed", type=int, default=None, help="Random seed")
-    ap.add_argument("--name", type=str, default="Hero")
-    ap.add_argument("--class", dest="player_class", type=str, default="Warrior",
-                    choices=["Warrior", "Rogue", "Cleric", "Mage"])
-    args = ap.parse_args()
-    launch(grid=args.grid, rooms=args.rooms, seed=args.seed,
-           player_name=args.name, player_class=args.player_class)
-
 
 if __name__ == "__main__":
-    main()
+    from game import GameState
+    root = tk.Tk()
+    state = GameState(grid_size=10, num_rooms=15)
+    app = DungeonGUI(root, state)
+    root.mainloop()
