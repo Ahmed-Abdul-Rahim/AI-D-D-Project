@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import tkinter as tk
+import random
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 from typing import Optional
@@ -1815,49 +1816,190 @@ class PlayTab:
         self.btn_force.config(
             state=tk.NORMAL if self.state.can_force_boss_door() else tk.DISABLED)
 
+class CharacterCreationDialog(tk.Toplevel):
+    """Modal window for creating the player character."""
+
+    def __init__(self, master, initial_name="Hero", player_class="Warrior",
+                 grid_size=8, num_rooms=12, seed=None):
+        super().__init__(master)
+        self.title("Character Creation")
+        self.resizable(False, False)
+        self.transient(master)
+        self.grab_set()
+
+        self.player_class = player_class
+        self.grid_size = grid_size
+        self.num_rooms = num_rooms
+        self.current_seed = seed if seed is not None else random.randint(0, 999999)
+
+        self.result = None   # will hold (name, class, seed) on confirm
+        self.initial_name = initial_name   # store for later us
+        self.mono = tkfont.Font(family="Consolas", size=10)
+        self.bold = tkfont.Font(family="Consolas", size=11, weight="bold")
+
+        self._build_ui()
+        self._refresh_preview()
+        self.update_idletasks()
+        self.geometry("800x600")           # set a reasonable size
+
+        self.protocol("WM_DELETE_WINDOW", self._on_confirm)  # treat close as confirm
+
+    def _build_ui(self):
+        # Instruction label
+        info = (
+            "Escape the dungeon by defeating the boss.\n"
+            "You'll need to find the boss key first, then force open the boss door.\n"
+            "Enter your name, view your stats, and click Start Adventure."
+        )
+        tk.Label(
+            self, text=info, font=self.mono, justify="left",
+            bg="#1a1a1f", fg="#cfcfcf", wraplength=420
+        ).pack(padx=20, pady=(20, 10))
+
+        # Name
+        name_frame = tk.Frame(self, bg="#1a1a1f")
+        name_frame.pack(padx=20, pady=5, fill=tk.X)
+        tk.Label(name_frame, text="Name:", font=self.mono,
+                 bg="#1a1a1f", fg="#cfcfcf").pack(side=tk.LEFT)
+        self.name_var = tk.StringVar(value=self.initial_name)   # use stored value
+        name_entry = tk.Entry(name_frame, textvariable=self.name_var,
+                              font=self.mono, width=20,
+                              bg="#0e0e10", fg="#fafafa",
+                              insertbackground="#fafafa")
+        name_entry.pack(side=tk.LEFT, padx=(6, 0))
+        name_entry.focus_set()
+
+        # Stats display
+        stats_frame = tk.Frame(self, bg="#1a1a1f", borderwidth=1,
+                               relief="solid", bd=1, padx=12, pady=10)
+        stats_frame.pack(padx=20, pady=10, fill=tk.X)
+        self.stats_label = tk.Label(stats_frame, font=self.mono,
+                                    bg="#1a1a1f", fg="#e6e6e6",
+                                    justify="left")
+        self.stats_label.pack()
+
+        # Buttons
+        btn_frame = tk.Frame(self, bg="#1a1a1f")
+        btn_frame.pack(pady=(0, 20))
+        tk.Button(btn_frame, text="Re‑roll stats", command=self._on_reroll,
+                  width=14).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Start Adventure", command=self._on_confirm,
+                  bg="#27ae60", fg="white", font=self.bold,
+                  width=16).pack(side=tk.LEFT, padx=5)
+
+    def _create_preview_game(self, seed):
+        """Create a minimal GameState just to extract the rolled player stats."""
+        # Use smallest possible dungeon so it's fast
+        return GameState(
+            grid_size=3, num_rooms=2,
+            player_name=self.name_var.get() or "Hero",
+            player_class=self.player_class,
+            seed=seed
+        )
+
+    def _refresh_preview(self):
+        try:
+            temp = self._create_preview_game(self.current_seed)
+            p = temp.player
+            text = (
+                f"Class: {self.player_class}\n"
+                f"HP:    {p.hp} / {p.max_hp}\n"
+                f"ATK:   {p.attack}   DEF:   {p.defense}\n"
+                f"STR:   {p.strength:2}   DEX:   {p.dexterity:2}   CON:   {p.constitution:2}\n"
+                f"INT:   {p.intelligence:2}   WIS:   {p.wisdom:2}   CHA:   {p.charisma:2}\n"
+                f"Gold:  {p.gold}"
+            )
+            temp = None
+        except Exception as e:
+            text = f"(Could not preview stats: {e})"
+        self.stats_label.config(text=text)
+
+    def _on_reroll(self):
+        self.current_seed = random.randint(0, 999999)
+        self._refresh_preview()
+
+    def _on_confirm(self):
+        self.result = (
+            self.name_var.get().strip() or "Hero",
+            self.player_class,
+            self.current_seed
+        )
+        self.destroy()
+
 
 # ===========================================================================
 # Application shell
 # ===========================================================================
 
 class App:
-    def __init__(self, root: tk.Tk, state: Optional[GameState] = None):
+    def __init__(self, root: tk.Tk, state: Optional[GameState] = None,
+                 grid_size: int = 8, num_rooms: int = 12, seed: int = None,
+                 player_name: str = "Hero", player_class: str = "Warrior"):
         self.root = root
         root.title("AI Dungeon Master — algorithm inspector & playable demo")
         root.configure(bg=GRID_BG)
 
-        nb = ttk.Notebook(root)
+        self.player_name = player_name
+        self.player_class = player_class
+        self.grid_size = grid_size
+        self.num_rooms = num_rooms
+        self.seed = seed
+
+        self.nb = nb = ttk.Notebook(root)          # store as self.nb
         nb.pack(fill=tk.BOTH, expand=True)
 
-        # Inspector tab is first because it's the technique-showcase
         inspector_frame = tk.Frame(nb, bg=GRID_BG)
         nb.add(inspector_frame, text="Generation Inspector")
         self.inspector = GenerationInspectorTab(inspector_frame)
 
-        # NPC Brain tab — interactive decision-tree explorer
         brain_frame = tk.Frame(nb, bg=GRID_BG)
         nb.add(brain_frame, text="NPC Brain")
         self.brain = NPCBrainTab(brain_frame)
 
-        # Combat Math tab — Bayesian breakdown + live calibration
         combat_frame = tk.Frame(nb, bg=GRID_BG)
         nb.add(combat_frame, text="Combat Math")
         self.combat_tab = CombatMathTab(combat_frame)
 
-        # Algorithm Comparison tab — runs eval sweep on demand
         compare_frame = tk.Frame(nb, bg=GRID_BG)
         nb.add(compare_frame, text="Algorithm Comparison")
         self.compare_tab = AlgorithmComparisonTab(compare_frame)
 
-        # Play tab requires a GameState; lazily build one if not provided.
-        play_frame = tk.Frame(nb, bg=GRID_BG)
-        nb.add(play_frame, text="Play")
-        if state is None:
-            state = GameState(grid_size=8, num_rooms=12)
-        self.play = PlayTab(play_frame, state, root)
+        # Play tab frame – filled after character creation if needed
+        self.play_frame = tk.Frame(nb, bg=GRID_BG)
+        nb.add(self.play_frame, text="Play")
+        self.play = None
 
         self._bind_tab_keys()
-        nb.select(4)
+
+        self._char_creation_done = False
+        if state is not None:
+            self.play = PlayTab(self.play_frame, state, root)
+            self._char_creation_done = True
+        else:
+            self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+            # initial tab is index 0 (Generation Inspector), so no popup yet
+
+    def _show_character_creation(self):
+        dlg = CharacterCreationDialog(
+            self.root,
+            initial_name=self.player_name,
+            player_class=self.player_class,
+            grid_size=self.grid_size,
+            num_rooms=self.num_rooms,
+            seed=self.seed
+        )
+        self.root.wait_window(dlg)
+
+        name, pclass, seed = dlg.result or (self.player_name, self.player_class, self.seed)
+        self.state = GameState(
+            grid_size=self.grid_size,
+            num_rooms=self.num_rooms,
+            player_name=name,
+            player_class=pclass,
+            seed=seed
+        )
+        self.play = PlayTab(self.play_frame, self.state, self.root)
+        self.nb.select(4)   # switch to Play tab
 
     def _bind_tab_keys(self):
         """Binds Ctrl+Tab and Ctrl+Shift+Tab for navigation."""
@@ -1878,6 +2020,15 @@ class App:
         
         # Return 'break' to prevent the default system behavior if necessary
         return "break"
+    
+    def _on_tab_changed(self, event=None):
+    #"""Open character creation the first time the Play tab is selected."""
+        if self._char_creation_done:
+            return
+        current = self.nb.index(self.nb.select())
+        if current == 4:                     # Play tab
+            self._char_creation_done = True
+            self._show_character_creation()
 
 # ---------------------------------------------------------------------------
 # Launcher
@@ -1885,11 +2036,9 @@ class App:
 
 def launch(grid: int = 8, rooms: int = 12, seed: Optional[int] = None,
            player_name: str = "Hero", player_class: str = "Warrior") -> None:
-    state = GameState(grid_size=grid, num_rooms=rooms,
-                      player_name=player_name, player_class=player_class,
-                      seed=seed)
     root = tk.Tk()
-    App(root, state=state)
+    App(root, state=None, grid_size=grid, num_rooms=rooms, seed=seed,
+        player_name=player_name, player_class=player_class)
     root.mainloop()
 
 

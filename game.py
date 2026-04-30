@@ -170,7 +170,7 @@ class GameState:
             self.status.combat_enemies = hostiles
             self.status.target_idx = 0
             names = ", ".join(n.name for n in hostiles)
-            self.log(f"⚔  Foes appear: {names}!")
+            self.log(f"  Foes appear: {names}!")
         else:
             for npc in room.npcs:
                 self.log(f"You see a {npc.name} ({npc.npc_type.value}).")
@@ -205,14 +205,14 @@ class GameState:
             result, roll = self.skill_check.perform_check(
                 skill_level=self.player.dexterity, difficulty=13)
             if result.value.endswith("success"):
-                self.log(f"⚠  Trap! DEX save (rolled {roll}) → "
+                self.log(f"  Trap! DEX save (rolled {roll}) → "
                          f"{result.value} — you avoid it.")
             else:
                 dmg = random.randint(5, 15)
                 if result.value == "critical_failure":
                     dmg = int(dmg * 1.5)
                 self.player.hp = max(0, self.player.hp - dmg)
-                self.log(f"⚠  Trap! DEX save (rolled {roll}) → "
+                self.log(f"  Trap! DEX save (rolled {roll}) → "
                          f"{result.value} — you take {dmg} damage.")
             self._check_death()
 
@@ -234,7 +234,7 @@ class GameState:
 
         outcome, dmg = self.combat_system.resolve_attack(self.player, enemy)
         if outcome == CombatOutcome.CRITICAL_HIT:
-            self.log(f"💥 CRIT! You hit {enemy.name} for {dmg}.")
+            self.log(f" CRIT! You hit {enemy.name} for {dmg}.")
         elif outcome == CombatOutcome.HIT:
             self.log(f"You hit {enemy.name} for {dmg}.")
         elif outcome == CombatOutcome.CRITICAL_MISS:
@@ -286,7 +286,7 @@ class GameState:
     def _enemy_attacks(self, enemy: NPC) -> None:
         outcome, dmg = self.combat_system.resolve_attack(enemy, self.player)
         if outcome == CombatOutcome.CRITICAL_HIT:
-            self.log(f"💥 {enemy.name} crits you for {dmg}!")
+            self.log(f" {enemy.name} crits you for {dmg}!")
         elif outcome == CombatOutcome.HIT:
             self.log(f"{enemy.name} hits you for {dmg}.")
         else:
@@ -332,7 +332,7 @@ class GameState:
             self.status.victory = True
             self.status.game_over = True
             self.status.in_combat = False
-            self.log("🏆 You have slain the boss! Victory!")
+            self.log(" You have slain the boss! Victory!")
             return
 
         if not self.status.combat_enemies:
@@ -441,7 +441,7 @@ class GameState:
              "npc_met": True, "turn_count": self.turn})
         rolldesc = f"WIS {self.player.wisdom}, rolled {roll}"
         if result.value.endswith("success"):
-            self.log(f"🔍 Insight ({rolldesc}) → {result.value}: "
+            self.log(f" Insight ({rolldesc}) → {result.value}: "
                      f"{npc.name} intends to **{intent.value}**.")
         elif result.value == "critical_failure":
             misread = {
@@ -450,10 +450,10 @@ class GameState:
                 NPCAction.STEAL:  NPCAction.HELP,
                 NPCAction.HELP:   NPCAction.STEAL,
             }.get(intent, NPCAction.IDLE)
-            self.log(f"🔍 Insight ({rolldesc}) → critical failure! "
+            self.log(f" Insight ({rolldesc}) → critical failure! "
                      f"You misread {npc.name} as planning to **{misread.value}**.")
         else:
-            self.log(f"🔍 Insight ({rolldesc}) → {result.value}: "
+            self.log(f" Insight ({rolldesc}) → {result.value}: "
                      f"you can't get a read on {npc.name}.")
 
     def persuade(self) -> None:
@@ -470,7 +470,7 @@ class GameState:
             skill_level=self.player.charisma, difficulty=dc)
         rolldesc = f"CHA {self.player.charisma}, rolled {roll}, DC {dc}"
         if result.value.endswith("success"):
-            self.log(f"🗣 Persuasion ({rolldesc}) → {result.value}. "
+            self.log(f" Persuasion ({rolldesc}) → {result.value}. "
                      f"{enemy.name} stands down.")
             if result.value == "critical_success":
                 bonus = random.randint(10, 30)
@@ -483,7 +483,7 @@ class GameState:
             if not self.status.combat_enemies:
                 self.status.in_combat = False
         else:
-            self.log(f"🗣 Persuasion ({rolldesc}) → {result.value}. "
+            self.log(f" Persuasion ({rolldesc}) → {result.value}. "
                      f"{enemy.name} is unmoved and strikes!")
             self._enemy_attacks(enemy)
 
@@ -496,7 +496,7 @@ class GameState:
             skill_level=self.player.strength, difficulty=16)
         rolldesc = f"STR {self.player.strength}, rolled {roll}, DC 16"
         if result.value.endswith("success"):
-            self.log(f"💪 Force door ({rolldesc}) → {result.value}. "
+            self.log(f" Force door ({rolldesc}) → {result.value}. "
                      f"The boss door splinters!")
             self.status.boss_unlocked = True
         else:
@@ -504,7 +504,7 @@ class GameState:
             if result.value == "critical_failure":
                 dmg *= 2
             self.player.hp = max(0, self.player.hp - dmg)
-            self.log(f"💪 Force door ({rolldesc}) → {result.value}. "
+            self.log(f"Force door ({rolldesc}) → {result.value}. "
                      f"You hurt yourself for {dmg}.")
             self._check_death()
 
@@ -516,4 +516,4 @@ class GameState:
             self.status.game_over = True
             self.status.victory = False
             self.status.in_combat = False
-            self.log("💀 You have fallen. The dungeon claims another victim.")
+            self.log(" You have fallen. The dungeon claims another victim.")
