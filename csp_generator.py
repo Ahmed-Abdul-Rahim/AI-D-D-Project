@@ -194,22 +194,71 @@ class DungeonCSP:
         return random.choice(descriptions.get(room_type, ["An empty room."]))
 
     def populate_rooms(self):
-        """Add items and NPCs to rooms after structure is finalized."""
+        """Finalize room contents with diverse enemy groups, merchants, and treasures."""
         for coords, room in self.assignment.items():
+            
+            # --- 1. Treasure Room Logic ---
             if room.room_type == RoomType.TREASURE:
                 room.items.append(Item("Gold Coins", ItemType.GOLD, {"amount": random.randint(50, 150)}))
                 if random.random() > 0.5:
                     room.items.append(Item("Health Potion", ItemType.POTION, {"heal": 30}))
             
-            # Ensure a Key is placed
-            treasure_rooms = [r for r in self.assignment.values() if r.room_type == RoomType.TREASURE]
-            if treasure_rooms and not any(any(i.item_type == ItemType.KEY for i in r.items) for r in self.assignment.values()):
-                random.choice(treasure_rooms).items.append(Item("Boss Key", ItemType.KEY, {"opens": "boss_room"}))
+            # --- 2. Merchant Room Logic (The Fix) ---
+            elif room.room_type == RoomType.MERCHANT:
+                merchant = NPC(
+                    name="Traveling Merchant",
+                    npc_type=NPCType.MERCHANT,
+                    hp=50,
+                    attack=5,
+                    defense=10,
+                    dialogue=["Greetings! I have supplies if you have the gold.", "A dangerous journey requires the right gear."]
+                )
+                room.npcs.append(merchant)
+                # Merchants also carry a local potion stock
+                room.items.append(Item("Shop Potion", ItemType.POTION, {"heal": 25}))
 
-            if room.room_type == RoomType.BOSS:
-                room.npcs.append(NPC("Dragon", NPCType.BOSS, 100, 20, 10, ["Roar!"]))
-            elif room.room_type == RoomType.NORMAL and random.random() > 0.7:
-                room.npcs.append(NPC("Goblin", NPCType.ENEMY, 30, 8, 2, ["Hehehe!"]))
+            # --- 3. Boss Room Logic ---
+            elif room.room_type == RoomType.BOSS:
+                room.npcs.append(NPC("Dragon King", NPCType.BOSS, 120, 22, 12, ["Burn!"]))
+            
+            # --- 4. Normal Room Logic (Diverse Enemies) ---
+            elif room.room_type == RoomType.NORMAL:
+                spawn_roll = random.random()
+                if spawn_roll > 0.6:  # 40% chance of encounter
+                    num_enemies = random.randint(1, 3)
+                    for _ in range(num_enemies):
+                        room.npcs.append(self._create_random_enemy())
+
+        # --- 5. Key Insurance Logic ---
+        # Ensure the Boss Key exists somewhere in the dungeon
+        all_rooms = list(self.assignment.values())
+        has_key = any(any(i.item_type == ItemType.KEY for i in r.items) for r in all_rooms)
+        
+        if not has_key:
+            treasure_rooms = [r for r in all_rooms if r.room_type == RoomType.TREASURE]
+            if treasure_rooms:
+                target_room = random.choice(treasure_rooms)
+            else:
+                # If no treasure rooms spawned, put it in a normal room
+                target_room = random.choice([r for r in all_rooms if r.room_type != RoomType.START])
+            
+            target_room.items.append(Item("Boss Key", ItemType.KEY, {"opens": "boss_room"}))
+
+    def _create_random_enemy(self) -> NPC:
+        """Factory for generating diverse enemies."""
+        types = [
+            # Name, HP, ATK, DEF
+            ("Goblin", 25, 8, 2, ["Hehehe!"]),
+            ("Kobold", 15, 10, 1, ["Yip yip!"]),
+            ("Wolf", 20, 12, 3, ["Grrr..."]),
+            ("Goblin Leader", 45, 14, 5, ["To arms!"])
+        ]
+        
+        # Weighted choice: Kobolds and Goblins are common, Leaders are rare
+        weights = [40, 30, 20, 10]
+        name, hp, atk, df, lines = random.choices(types, weights=weights, k=1)[0]
+        
+        return NPC(name, NPCType.ENEMY, hp, atk, df, lines)
 
     def generate(self) -> Optional[Dungeon]:
         """Standard wrapper to run the generator to completion."""

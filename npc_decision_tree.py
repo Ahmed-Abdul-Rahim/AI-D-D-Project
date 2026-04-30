@@ -80,41 +80,24 @@ class NPCDecisionTree:
         Decision tree for enemy NPCs
         
         Logic:
-        - If NPC health < 20%, flee or surrender
-        - Else if player health < 30%, attack aggressively
-        - Else if NPC health < 50%, defend
-        - Else attack normally
+        - If NPC health is critically low (< 10), flee or defend
+        - Else attack aggressively
         """
         root = DecisionNode(
-            condition=lambda npc, player, state: (npc.hp / (npc.hp + npc.defense * 10)) < 0.2
+            condition=lambda npc, player, state: npc.hp < 10
         )
         
-        # Low health branch - flee or surrender
+        # Low health branch - flee or defend
         low_health = DecisionNode(
-            condition=lambda npc, player, state: player.hp > 50
+            condition=lambda npc, player, state: player.hp > 30
         )
-        low_health.true_branch = DecisionNode(action=NPCAction.FLEE)  # Player strong, flee
-        low_health.false_branch = DecisionNode(action=NPCAction.ATTACK)  # Player weak, keep fighting
+        low_health.true_branch = DecisionNode(action=NPCAction.FLEE)     # Player still strong, run!
+        low_health.false_branch = DecisionNode(action=NPCAction.DEFEND)  # Player also weak, brace for impact
         
         root.true_branch = low_health
         
-        # Normal health branch
-        normal_health = DecisionNode(
-            condition=lambda npc, player, state: player.hp < 30
-        )
-        
-        # Player low health - attack aggressively
-        normal_health.true_branch = DecisionNode(action=NPCAction.ATTACK)
-        
-        # Player healthy - check NPC health
-        npc_health_check = DecisionNode(
-            condition=lambda npc, player, state: (npc.hp / (npc.hp + npc.defense * 10)) < 0.5
-        )
-        npc_health_check.true_branch = DecisionNode(action=NPCAction.DEFEND)
-        npc_health_check.false_branch = DecisionNode(action=NPCAction.ATTACK)
-        
-        normal_health.false_branch = npc_health_check
-        root.false_branch = normal_health
+        # Normal health branch - Default to Attack
+        root.false_branch = DecisionNode(action=NPCAction.ATTACK)
         
         return root
     
@@ -124,23 +107,14 @@ class NPCDecisionTree:
         Decision tree for merchant NPCs
         
         Logic:
-        - If player has gold, offer trade
-        - Else if player has items, offer to buy
-        - Else talk
+        - Always offer to trade unless the player is completely broke and item-less
         """
         root = DecisionNode(
-            condition=lambda npc, player, state: player.gold > 50
+            condition=lambda npc, player, state: player.gold > 0 or len(player.inventory) > 0
         )
         
         root.true_branch = DecisionNode(action=NPCAction.TRADE)
-        
-        has_items = DecisionNode(
-            condition=lambda npc, player, state: len(player.inventory) > 0
-        )
-        has_items.true_branch = DecisionNode(action=NPCAction.TRADE)
-        has_items.false_branch = DecisionNode(action=NPCAction.TALK)
-        
-        root.false_branch = has_items
+        root.false_branch = DecisionNode(action=NPCAction.TALK)
         
         return root
     
@@ -210,8 +184,9 @@ class NPCDecisionTree:
         - Else if player health > 70%, defend and prepare
         - Else attack
         """
+        # Simplified boss health check using assumed max of roughly 100 for percentage
         root = DecisionNode(
-            condition=lambda npc, player, state: (npc.hp / 100) < 0.3
+            condition=lambda npc, player, state: npc.hp < 30
         )
         
         root.true_branch = DecisionNode(action=NPCAction.ATTACK)  # Desperate attack
@@ -230,12 +205,6 @@ class NPCDecisionTree:
     def get_tree_for_npc(npc_type: NPCType) -> DecisionNode:
         """
         Get the appropriate decision tree for an NPC type
-        
-        Args:
-            npc_type: Type of NPC
-        
-        Returns:
-            Root node of decision tree
         """
         if npc_type == NPCType.ENEMY:
             return NPCDecisionTree.build_enemy_tree()
@@ -248,7 +217,6 @@ class NPCDecisionTree:
         elif npc_type == NPCType.BOSS:
             return NPCDecisionTree.build_boss_tree()
         else:
-            # Default to idle
             return DecisionNode(action=NPCAction.IDLE)
 
 
@@ -269,14 +237,6 @@ class NPCBehaviorManager:
     def get_npc_action(self, npc: NPC, player: Player, game_state: Dict[str, Any]) -> NPCAction:
         """
         Get the action an NPC should take
-        
-        Args:
-            npc: The NPC
-            player: The player
-            game_state: Current game state
-        
-        Returns:
-            Action the NPC should take
         """
         tree = self.decision_trees.get(npc.npc_type)
         if tree:
@@ -286,13 +246,6 @@ class NPCBehaviorManager:
     def get_npc_dialogue(self, npc: NPC, action: NPCAction) -> str:
         """
         Get appropriate dialogue based on NPC action
-        
-        Args:
-            npc: The NPC
-            action: Action being taken
-        
-        Returns:
-            Dialogue string
         """
         dialogue_map = {
             NPCAction.ATTACK: npc.dialogue[0] if npc.dialogue else "Prepare to fight!",

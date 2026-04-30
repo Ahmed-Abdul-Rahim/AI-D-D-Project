@@ -51,6 +51,7 @@ class DungeonGUI:
         self.title_f = tkfont.Font(family="Segoe UI", size=14, weight="bold")
 
         self._build_layout()
+        self._bind_keys()
         self.refresh()
 
     def _build_layout(self) -> None:
@@ -244,6 +245,50 @@ class DungeonGUI:
 
     # -- repaint -----------------------------------------------------------
 
+    def _bind_keys(self) -> None:
+        """Binds WASD, Arrows, and Action keys (E, F, Q)."""
+        # Movement: WASD and Arrows
+        for key in ['w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'Up', 'Down', 'Left', 'Right']:
+            # Use <Key> for single chars, <keysym> for special keys
+            if len(key) > 1:
+                self.root.bind(f"<{key}>", self._handle_keypress)
+            else:
+                self.root.bind(key, self._handle_keypress)
+        
+        # Actions: E (Attack), F (Flee), Q (Talk)
+        for key in ['e', 'E', 'f', 'F', 'q', 'Q']:
+            self.root.bind(key, self._handle_keypress)
+
+    def _handle_keypress(self, event: tk.Event) -> None:
+        """Translates key events into movement or combat actions."""
+        # Standardize the key name
+        key = event.keysym.lower() if len(event.keysym) == 1 else event.keysym
+        
+        # 1. Handle Movement
+        move_mapping = {
+            'w': 'North', 'Up': 'North',
+            's': 'South', 'Down': 'South',
+            'a': 'West',  'Left': 'West',
+            'd': 'East',  'Right': 'East'
+        }
+
+        if key in move_mapping:
+            direction = move_mapping[key]
+            # Only trigger if the button is currently clickable (not in combat/game over)
+            if self.move_buttons[direction]['state'] == tk.NORMAL:
+                self._on_move(direction)
+            return
+
+        # 2. Handle Actions (E=Attack, F=Flee, Q=Talk)
+        if key == 'e':
+            if self.btn_attack['state'] == tk.NORMAL:
+                self._on_attack()
+        elif key == 'f':
+            if self.btn_flee['state'] == tk.NORMAL:
+                self._on_flee()
+        elif key == 'q':
+            if self.btn_talk['state'] == tk.NORMAL:
+                self._on_talk()
     def refresh(self) -> None:
         self._draw_map()
         self._draw_stats()
@@ -315,23 +360,54 @@ class DungeonGUI:
     def _draw_room(self) -> None:
         room = self.state.current_room()
         lines = [f"Type: {room.room_type.value}"]
-        if room.npcs:
-            lines.append("NPCs:")
-            for n in room.npcs:
-                tag = "(hostile)" if n.npc_type in (NPCType.ENEMY, NPCType.BOSS) else ""
-                lines.append(f"  - {n.name} HP {n.hp} {tag}")
         
-        if self.state.status.in_combat and self.state.status.combat_enemy:
-            e = self.state.status.combat_enemy
-            lines.append(f"** IN COMBAT vs {e.name} **")
+        # 1. Clear the frame so we don't stack old buttons
+        for w in self.room_items_frame.winfo_children(): 
+            w.destroy()
+
+        # 2. Handle NPC and Combat Display
+        if room.npcs:
+            lines.append("NPCs in room:")
+            for n in room.npcs:
+                is_hostile = n.npc_type in (NPCType.ENEMY, NPCType.BOSS)
+                tag = "(HOSTILE)" if is_hostile else ""
+                
+                is_current_target = False
+                combat_idx = -1
+                
+                if self.state.status.in_combat:
+                    try:
+                        combat_idx = self.state.status.combat_enemies.index(n)
+                        if combat_idx == self.state.status.target_idx:
+                            is_current_target = True
+                    except ValueError:
+                        pass
+
+                target_str = " >> TARGET <<" if is_current_target else ""
+                lines.append(f"  - {n.name} (HP: {n.hp}) {tag}{target_str}")
+
+                # Create Target Buttons
+                if self.state.status.in_combat and is_hostile and n.hp > 0 and combat_idx != -1:
+                    tk.Button(self.room_items_frame, text=f"Target {n.name}", 
+                              bg="#c0392b" if is_current_target else "#444",
+                              fg="white",
+                              command=lambda idx=combat_idx: self._on_select_target(idx)).pack(anchor="w", pady=1)
+
         self.room_text.config(text="\n".join(lines))
 
-        for w in self.room_items_frame.winfo_children(): w.destroy()
+        # 3. FIX: Handle Item Pickup Display
         if room.items:
-            tk.Label(self.room_items_frame, text="On the floor:", font=self.mono, bg="#1a1a1f", fg="#cfcfcf").pack(anchor="w")
+            # Add a spacer/header for items
+            tk.Label(self.room_items_frame, text="\nOn the floor:", font=self.mono, 
+                     bg="#1a1a1f", fg="#cfcfcf").pack(anchor="w")
+            
+            # Create a button for every item in the room
             for i, item in enumerate(list(room.items)):
-                tk.Button(self.room_items_frame, text=f"Pick up: {item.name}", command=lambda idx=i: self._on_pickup(idx)).pack(anchor="w", pady=1)
-
+                tk.Button(self.room_items_frame, 
+                          text=f"Pick up: {item.name}", 
+                          bg="#27ae60", fg="white", # Green for items
+                          command=lambda idx=i: self._on_pickup(idx)).pack(anchor="w", pady=2)
+                
     def _draw_inventory(self) -> None:
         self.inv_listbox.delete(0, tk.END)
         for item in self.state.player.inventory:
@@ -346,7 +422,7 @@ class DungeonGUI:
 
     def _update_button_state(self) -> None:
         room = self.state.current_room()
-        in_combat = self.state.status.in_combat
+        in_combat = self.state.status.in_combat and len(self.state.status.combat_enemies) > 0
         game_over = self.state.status.game_over
         
         for label, btn in self.move_buttons.items():
@@ -357,10 +433,26 @@ class DungeonGUI:
 
         self.btn_attack.config(state=tk.NORMAL if in_combat and not game_over else tk.DISABLED)
         self.btn_flee.config(state=tk.NORMAL if in_combat and not game_over else tk.DISABLED)
+        
+        # ADD THIS LINE: Disable talk button if in combat or dead
+        self.btn_talk.config(state=tk.DISABLED if in_combat or game_over else tk.NORMAL)
+    
+    def _on_select_target(self, idx: int) -> None:
+        """Sets the current combat target with safety check."""
+        # Ensure the index is still valid for the current combat list
+        if 0 <= idx < len(self.state.status.combat_enemies):
+            self.state.status.target_idx = idx
+            target_name = self.state.status.combat_enemies[idx].name
+            self.state.event_log.append(f"Targeting {target_name}...")
+        else:
+            # Fallback if the list changed
+            self.state.status.target_idx = 0
+            
+        self.refresh()
 
 if __name__ == "__main__":
     from game import GameState
     root = tk.Tk()
-    state = GameState(grid_size=10, num_rooms=15)
+    state = GameState(grid_size=8, num_rooms=15)
     app = DungeonGUI(root, state)
     root.mainloop()
