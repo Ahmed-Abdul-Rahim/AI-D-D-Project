@@ -1856,6 +1856,28 @@ class App:
             state = GameState(grid_size=8, num_rooms=12)
         self.play = PlayTab(play_frame, state, root)
 
+        self._bind_tab_keys()
+        nb.select(4)
+
+    def _bind_tab_keys(self):
+        """Binds Ctrl+Tab and Ctrl+Shift+Tab for navigation."""
+        # Note: Control-Tab is a standard Tkinter event
+        self.root.bind("<Control-Tab>", lambda e: self._handle_tab_switch(1))
+        self.root.bind("<Control-ISO_Left_Tab>", lambda e: self._handle_tab_switch(-1))
+        # On some Windows/Linux systems, Ctrl+Shift+Tab maps to Control-Shift-Tab
+        self.root.bind("<Control-Shift-Tab>", lambda e: self._handle_tab_switch(-1))
+
+    def _handle_tab_switch(self, direction: int):
+        """Calculates the next tab index and selects it."""
+        current = self.nb.index(self.nb.select())
+        total = self.nb.index("end")
+        
+        # Calculate new index with wraparound logic
+        new_index = (current + direction) % total
+        self.nb.select(new_index)
+        
+        # Return 'break' to prevent the default system behavior if necessary
+        return "break"
 
 # ---------------------------------------------------------------------------
 # Launcher
