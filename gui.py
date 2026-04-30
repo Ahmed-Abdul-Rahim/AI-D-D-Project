@@ -1590,16 +1590,39 @@ class PlayTab:
 
     def _handle_keypress(self, event: tk.Event):
         key = event.keysym.lower() if len(event.keysym) == 1 else event.keysym
+        
+        # 1. Handle Target Cycling if in combat
+        in_combat = self.state.status.in_combat
+        enemies = self.state.status.combat_enemies
+        
+        if in_combat and len(enemies) > 1:
+            current_idx = self.state.status.target_idx
+            # Cycle Up (W or Up Arrow)
+            if key in ('w', 'Up'):
+                new_idx = (current_idx - 1) % len(enemies)
+                self._on_select_target(new_idx)
+                return # Intercept the key so it doesn't trigger movement
+            # Cycle Down (S or Down Arrow)
+            elif key in ('s', 'Down'):
+                new_idx = (current_idx + 1) % len(enemies)
+                self._on_select_target(new_idx)
+                return # Intercept the key so it doesn't trigger movement
+
+        # 2. Existing Movement Logic
         move_map = {
             'w': 'North', 'Up': 'North',
             's': 'South', 'Down': 'South',
             'a': 'West',  'Left': 'West',
             'd': 'East',  'Right': 'East',
         }
+        
         if key in move_map:
             direction = move_map[key]
+            # Movement is already gated by button state in your logic
             if self.move_buttons[direction]['state'] == tk.NORMAL:
                 self._on_move(direction)
+        
+        # 3. Action Hotkeys
         elif key == 'e':
             if self.btn_attack['state'] == tk.NORMAL:
                 self._on_attack()
