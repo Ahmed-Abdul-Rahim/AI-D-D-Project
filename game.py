@@ -122,6 +122,7 @@ class GameState:
         self.player: Player = make_player(player_name, player_class)
         self.player.position = self.dungeon.start_position
         self.dungeon.rooms[self.player.position].visited = True
+        self.player_class = player_class
 
         self.combat_system = BayesianCombatSystem()
         self.skill_check  = BayesianSkillCheck()
@@ -229,18 +230,45 @@ class GameState:
             self.status.target_idx = target_idx
 
         idx = min(self.status.target_idx,
-                  len(self.status.combat_enemies) - 1)
+                len(self.status.combat_enemies) - 1)
         enemy = self.status.combat_enemies[idx]
 
-        outcome, dmg = self.combat_system.resolve_attack(self.player, enemy)
-        if outcome == CombatOutcome.CRITICAL_HIT:
-            self.log(f" CRIT! You hit {enemy.name} for {dmg}.")
-        elif outcome == CombatOutcome.HIT:
-            self.log(f"You hit {enemy.name} for {dmg}.")
-        elif outcome == CombatOutcome.CRITICAL_MISS:
-            self.log("Critical miss! You stumble.")
+        # Spellcasters use a spell attack
+        if self.player_class == "Cleric":
+            outcome, dmg = self.combat_system.resolve_spell_attack(
+                self.player, enemy, self.player.wisdom
+            )
+            spell_name = "Holy Smite" if outcome in (CombatOutcome.HIT, CombatOutcome.CRITICAL_HIT) else "spell"
+        elif self.player_class == "Mage":
+            outcome, dmg = self.combat_system.resolve_spell_attack(
+                self.player, enemy, self.player.intelligence
+            )
+            spell_name = "Arcane Bolt" if outcome in (CombatOutcome.HIT, CombatOutcome.CRITICAL_HIT) else "spell"
         else:
-            self.log(f"You miss {enemy.name}.")
+            # Normal weapon attack
+            spell_name = None
+            outcome, dmg = self.combat_system.resolve_attack(self.player, enemy)
+
+        # Logging
+        if spell_name is not None:
+            if outcome == CombatOutcome.CRITICAL_HIT:
+                self.log(f"💥 CRIT! Your {spell_name} blasts {enemy.name} for {dmg}.")
+            elif outcome == CombatOutcome.HIT:
+                self.log(f"Your {spell_name} hits {enemy.name} for {dmg}.")
+            elif outcome == CombatOutcome.CRITICAL_MISS:
+                self.log(f"Your {spell_name} fizzles – critical miss!")
+            else:
+                self.log(f"Your {spell_name} misses {enemy.name}.")
+        else:
+            if outcome == CombatOutcome.CRITICAL_HIT:
+                self.log(f"💥 CRIT! You hit {enemy.name} for {dmg}.")
+            elif outcome == CombatOutcome.HIT:
+                self.log(f"You hit {enemy.name} for {dmg}.")
+            elif outcome == CombatOutcome.CRITICAL_MISS:
+                self.log("Critical miss! You stumble.")
+            else:
+                self.log(f"You miss {enemy.name}.")
+
         enemy.hp = max(0, enemy.hp - dmg)
 
         if enemy.hp <= 0:

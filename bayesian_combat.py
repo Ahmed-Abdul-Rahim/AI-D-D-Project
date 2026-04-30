@@ -167,6 +167,37 @@ class BayesianCombatSystem:
         else:
             return CombatOutcome.MISS, 0
     
+    def resolve_spell_attack(self, caster, defender, spell_stat):
+        """
+        Resolve a spell attack using the caster's spellcasting ability (WIS or INT).
+        Damage formula is comparable to a physical attack, substituting spell_stat
+        for the usual attack stat and rolling a d8 instead of a d6.
+        """
+        roll = self.dice.d20()
+
+        # Natural 20 – critical hit
+        if roll == 20:
+            base_damage = spell_stat
+            damage = base_damage * 2 + self.dice.d8()
+            return CombatOutcome.CRITICAL_HIT, damage
+
+        # Natural 1 – critical miss
+        if roll == 1:
+            return CombatOutcome.CRITICAL_MISS, 0
+
+        # Hit probability – uses spell_stat vs defender defense (same logic as physical)
+        stat_diff = spell_stat - defender.defense
+        stat_mod = stat_diff * 0.03
+        hit_prob = max(0.05, min(0.95, self.BASE_HIT_CHANCE + stat_mod))
+
+        roll_prob = (roll - 1) / 19.0
+        if roll_prob <= hit_prob:
+            # Damage: spell_stat - half target's defense + 1d8 (similar to melee: attack - def/2 + d6)
+            damage = max(1, spell_stat - defender.defense // 2 + self.dice.d8())
+            return CombatOutcome.HIT, damage
+        else:
+            return CombatOutcome.MISS, 0
+
     def simulate_combat_round(
         self,
         player: Player,

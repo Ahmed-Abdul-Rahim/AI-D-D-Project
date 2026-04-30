@@ -1826,6 +1826,7 @@ class CharacterCreationDialog(tk.Toplevel):
         self.resizable(False, False)
         self.transient(master)
         self.grab_set()
+        self.configure(bg=GRID_BG) 
 
         self.player_class = player_class
         self.grid_size = grid_size
@@ -1841,15 +1842,28 @@ class CharacterCreationDialog(tk.Toplevel):
         self._refresh_preview()
         self.update_idletasks()
         self.geometry("800x600")           # set a reasonable size
+        self.geometry("800x600")
+        # Dark ttk style
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure("TCombobox",
+                        fieldbackground="#0e0e10",
+                        background="#1a1a1f",
+                        foreground="#fafafa",
+                        arrowcolor="#fafafa",
+                        selectbackground="#5b8def",
+                        selectforeground="#0a0a0a")
+        style.map("TCombobox",
+                fieldbackground=[("readonly", "#0e0e10")],
+                foreground=[("readonly", "#fafafa")])
 
         self.protocol("WM_DELETE_WINDOW", self._on_confirm)  # treat close as confirm
 
     def _build_ui(self):
-        # Instruction label
         info = (
             "Escape the dungeon by defeating the boss.\n"
             "You'll need to find the boss key first, then force open the boss door.\n"
-            "Enter your name, view your stats, and click Start Adventure."
+            "Enter your name, choose a class, view your stats, and click Start Adventure."
         )
         tk.Label(
             self, text=info, font=self.mono, justify="left",
@@ -1860,18 +1874,50 @@ class CharacterCreationDialog(tk.Toplevel):
         name_frame = tk.Frame(self, bg="#1a1a1f")
         name_frame.pack(padx=20, pady=5, fill=tk.X)
         tk.Label(name_frame, text="Name:", font=self.mono,
-                 bg="#1a1a1f", fg="#cfcfcf").pack(side=tk.LEFT)
-        self.name_var = tk.StringVar(value=self.initial_name)   # use stored value
-        name_entry = tk.Entry(name_frame, textvariable=self.name_var,
-                              font=self.mono, width=20,
-                              bg="#0e0e10", fg="#fafafa",
-                              insertbackground="#fafafa")
+                bg="#1a1a1f", fg="#cfcfcf").pack(side=tk.LEFT)
+        self.name_var = tk.StringVar(value=self.initial_name)
+        # Name entry
+        name_entry = tk.Entry(
+            name_frame, textvariable=self.name_var,
+            font=self.mono, width=20,
+            bg="#0e0e10", fg="#fafafa",
+            insertbackground="#fafafa",
+            relief="flat", borderwidth=2,
+            highlightbackground="#333", highlightcolor="#5b8def"
+        )
         name_entry.pack(side=tk.LEFT, padx=(6, 0))
         name_entry.focus_set()
 
+        # Class picker
+        class_frame = tk.Frame(self, bg="#1a1a1f")
+        class_frame.pack(padx=20, pady=5, fill=tk.X)
+        tk.Label(class_frame, text="Class:", font=self.mono,
+                bg="#1a1a1f", fg="#cfcfcf").pack(side=tk.LEFT)
+        self.class_var = tk.StringVar(value=self.player_class)
+       # Class combobox
+        class_combo = ttk.Combobox(
+            class_frame, textvariable=self.class_var,
+            values=["Warrior", "Rogue", "Cleric", "Mage"],
+            state="readonly", width=12, font=self.mono
+        )
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure("TCombobox",
+                        fieldbackground="#0e0e10",
+                        background="#1a1a1f",
+                        foreground="#fafafa",
+                        arrowcolor="#fafafa",
+                        selectbackground="#5b8def",
+                        selectforeground="#0a0a0a")
+        style.map("TCombobox",
+                fieldbackground=[("readonly", "#0e0e10")],
+                foreground=[("readonly", "#fafafa")])
+        class_combo.pack(side=tk.LEFT, padx=(6, 0))
+        class_combo.bind("<<ComboboxSelected>>", lambda e: self._on_class_changed())
+
         # Stats display
         stats_frame = tk.Frame(self, bg="#1a1a1f", borderwidth=1,
-                               relief="solid", bd=1, padx=12, pady=10)
+                            relief="solid", bd=1, padx=12, pady=10)
         stats_frame.pack(padx=20, pady=10, fill=tk.X)
         self.stats_label = tk.Label(stats_frame, font=self.mono,
                                     bg="#1a1a1f", fg="#e6e6e6",
@@ -1882,10 +1928,14 @@ class CharacterCreationDialog(tk.Toplevel):
         btn_frame = tk.Frame(self, bg="#1a1a1f")
         btn_frame.pack(pady=(0, 20))
         tk.Button(btn_frame, text="Re‑roll stats", command=self._on_reroll,
-                  width=14).pack(side=tk.LEFT, padx=5)
+                width=14).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Start Adventure", command=self._on_confirm,
-                  bg="#27ae60", fg="white", font=self.bold,
-                  width=16).pack(side=tk.LEFT, padx=5)
+                bg="#27ae60", fg="white", font=self.bold,
+                width=16).pack(side=tk.LEFT, padx=5)
+
+    def _on_class_changed(self):
+        self.player_class = self.class_var.get()
+        self._refresh_preview()
 
     def _create_preview_game(self, seed):
         """Create a minimal GameState just to extract the rolled player stats."""
@@ -1921,7 +1971,7 @@ class CharacterCreationDialog(tk.Toplevel):
     def _on_confirm(self):
         self.result = (
             self.name_var.get().strip() or "Hero",
-            self.player_class,
+            self.class_var.get(),          # <-- use the combobox value
             self.current_seed
         )
         self.destroy()
