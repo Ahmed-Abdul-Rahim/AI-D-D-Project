@@ -386,9 +386,9 @@ if __name__ == "__main__":
     
     # Combat conclusion
     if player.hp > 0:
-        print(f"🎉 {player.name} wins!")
+        print(f"{player.name} wins!")
     else:
-        print(f"💀 {player.name} has been defeated!")
+        print(f"{player.name} has been defeated!")
     
     # Test skill checks
     print("\n" + "=" * 60)

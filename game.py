@@ -206,14 +206,14 @@ class GameState:
             result, roll = self.skill_check.perform_check(
                 skill_level=self.player.dexterity, difficulty=13)
             if result.value.endswith("success"):
-                self.log(f"  Trap! DEX save (rolled {roll}) → "
+                self.log(f"Trap! DEX save (rolled {roll}) → "
                          f"{result.value} — you avoid it.")
             else:
                 dmg = random.randint(5, 15)
                 if result.value == "critical_failure":
                     dmg = int(dmg * 1.5)
                 self.player.hp = max(0, self.player.hp - dmg)
-                self.log(f"  Trap! DEX save (rolled {roll}) → "
+                self.log(f"Trap! DEX save (rolled {roll}) → "
                          f"{result.value} — you take {dmg} damage.")
             self._check_death()
 
@@ -252,7 +252,7 @@ class GameState:
         # Logging
         if spell_name is not None:
             if outcome == CombatOutcome.CRITICAL_HIT:
-                self.log(f"💥 CRIT! Your {spell_name} blasts {enemy.name} for {dmg}.")
+                self.log(f"CRIT! Your {spell_name} blasts {enemy.name} for {dmg}.")
             elif outcome == CombatOutcome.HIT:
                 self.log(f"Your {spell_name} hits {enemy.name} for {dmg}.")
             elif outcome == CombatOutcome.CRITICAL_MISS:
@@ -261,7 +261,7 @@ class GameState:
                 self.log(f"Your {spell_name} misses {enemy.name}.")
         else:
             if outcome == CombatOutcome.CRITICAL_HIT:
-                self.log(f"💥 CRIT! You hit {enemy.name} for {dmg}.")
+                self.log(f"CRIT! You hit {enemy.name} for {dmg}.")
             elif outcome == CombatOutcome.HIT:
                 self.log(f"You hit {enemy.name} for {dmg}.")
             elif outcome == CombatOutcome.CRITICAL_MISS:
@@ -308,7 +308,7 @@ class GameState:
                 self.log("You break away and slip into the next room.")
                 self._announce_room_entry()
                 return
-        self.log("Your escape fails — enemies get a free swing!")
+        self.log("Your escape fails, enemies get a free swing!")
         self._resolve_npc_turns()
 
     def _enemy_attacks(self, enemy: NPC) -> None:
