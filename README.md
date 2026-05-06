@@ -54,6 +54,13 @@ The application is built using pure Python and Tkinter, with clean module separa
 1. Clone this repository or extract the provided zip file from the LMS.
 2. Open a terminal or command prompt and navigate to the project folder.
 3. (Optional but recommended) Create and activate a virtual environment.
+   ``` bash
+   python -m venv venv
+   ```
+   Then.
+   ``` bash
+   venv\Scripts\activate
+   ```
 4. Install the required dependencies. The core game runs on standard Python, but the mathematical plots in the GUI require Matplotlib:
    ``` bash
    pip install matplotlib
