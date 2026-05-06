@@ -55,12 +55,18 @@ The application is built using pure Python and Tkinter, with clean module separa
 2. Open a terminal or command prompt and navigate to the project folder.
 3. (Optional but recommended) Create and activate a virtual environment.
 4. Install the required dependencies. The core game runs on standard Python, but the mathematical plots in the GUI require Matplotlib:
-   ``` pip install matplotlib ```
+   ``` bash
+   pip install matplotlib
+   ```
 6. Run the application:
-   ``` python gui.py ```
+   ``` bash
+   python gui.py 
+   ```
 
 ## Running the Automated Evaluations
 
 To reproduce the data, metrics, and charts found in our project report, you can run the master evaluation script:
-``` python run_evaluation.py ```
+``` bash
+python run_evaluation.py
+```
 This will run the full sweep for dungeon generation comparison, NPC decision-tree evaluation, and Bayesian combat calibration. All output charts and CSVs will be saved in the `results/` directory.
